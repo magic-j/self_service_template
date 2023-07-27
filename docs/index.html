@@ -3,24 +3,150 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">	
-	
-    <title>My Website</title>
-	
-	<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.0/dist/jquery.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
-	
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>SelfService Demo</title>
+	  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.0/dist/jquery.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+  	<style>
+  	  #log {
+  	    font-family: Lucida Console, Lucida Sans Typewriter, monaco, Bitstream Vera Sans Mono, monospace;
+  	  }
+  	  #log p {
+  	    margin: 0;
+        font-size: 11px;
+        color: blue;
+  	  }
+  	</style>
   </head>
   <body>
     <main>
-        <h1>Self Service Template</h1>  
-        <p>
-			Testing ...
-		</p>
-		<p id="log"></p>
+        <h1>Self Service Demo</h1> 
+        <hr> 
+        <p id="content"></p>
+        <hr>
+		    <p id="log">Starting ...</p>
     </main>
 	<script>
+		var startPage = "start"
+		var cpq_settings = {
+	    "CPQ_DOMAIN": "https://p960818e4-edu.earlyaccess.tactoncpq.com/!tickets~T-00000110",
+	    "SELFSERVICE_API_PATH": "self-service-api-v1.2",
+	    "SELFSERVICE_KEY": "3E4UIgSYQ8ozyRjvy195kGTQbcNvEdd1ChKIxZx8",
+	    "EXTERNAL_ID": "DemoUser"
+	  }
 		function init() {
-			$("#log").append("JavaScript/jQuery is working here...")
+		  $("#log").empty();
+			addLog("INIT")	
+			showPage(startPage)		  			
+		}
+		function addLog(msg, color) {
+		  if (color)
+			  $("#log").append('<p style="color:' + color + '">' + msg + "</p>")
+			else
+			  $("#log").append('<p>' + msg + "</p>")
+		}
+		function showPage(pageName, parameters) {
+			$("#content").empty()
+			if (pageName === "start") {
+				showStartPage()
+			}
+			else if (pageName === "catalogtabs") {
+				showCatalogTabsPage()
+			}
+			else if (pageName === "products") {
+			  showProductsPage(...parameters)
+			}
+			else if (pageName === "configurator") {
+			  showConfiguratorPage(...parameters)
+			}
+			else {
+			  $("#content").append("page not found!")
+			}
+		}
+		function showStartPage() {
+		  $("#content").append('<h2>CPQ Settings</h2><div id="fields"></div><br><button id="start_button">START</button>');
+		  for (var fieldName in cpq_settings) {
+		    var value = cpq_settings[fieldName]
+		    $("#fields").append('<div><label>' + fieldName + ' : <input name="' + fieldName + '" value="' + value + '" style="min-width:600px" /><label></div><br>')
+		  }
+		  $("#start_button").click(function() {
+		    for (var fieldName in cpq_settings) {
+		      cpq_settings[fieldName] = $("#fields input[name=" + fieldName + "]").val()
+		    }
+		    showPage("catalogtabs")
+		  })
+		}
+		function showCatalogTabsPage() {
+			$("#content").append('<h2>CPQ catalog tabs</h2><div id="tabs"></div>');
+			addLog("Loading catalog tabs from CPQ...")
+			httpGet("catalog/tabs", function(tabEntries) {
+					console.log(tabEntries)
+					addLog("Found " + tabEntries.length + " tab(s)", "green")
+					var $ul = $("<ul>")
+					for (var tab of tabEntries) {
+						$ul.append('<li><a href="javascript:showPage(\'products\', [\'' + tab.name + '\', \'' + tab.title+ '\'])" class="tab ' + tab.type + '">' + tab.title + '</a></li>')
+					}
+					$("#tabs").append($ul)
+					addLog(".")
+			})
+		}
+		function showProductsPage(tabName, tabTitle) {
+			$("#content").append('<h1>catalog tab "' + tabTitle + '"</h1><div id="products"></div><a href="javascript:showPage(\'catalogtabs\')">Back to catalog tabs</a>');
+			addLog("Loading product list from CPQ...")
+			httpGet("catalog/search/" + tabName, function(productEntries) {
+				console.log(productEntries)
+				addLog("Found " + productEntries.rows.length + " product(s)", "green")
+				var $ul = $("<ul>")
+				for (var product of productEntries.rows) {
+				  var image = ""
+				  if (product.image) {
+				    var imgUrl = cpq_settings.CPQ_DOMAIN + product.image + "?_key=" + cpq_settings.SELFSERVICE_KEY
+				    image = '<img src="' + imgUrl + '" width="120">&nbsp;&nbsp;';
+				  }
+					$ul.append('<li class="product ' + product["#id"] + '">'+ image + product.description + ' &nbsp; &nbsp;<a href="javascript:showPage(\'configurator\', [\'' + tabName + '\', \'' + product["#id"] + '\', \'' + product.description+ '\'])">Configure</a></li>')
+				}
+				$("#products").append($ul)
+			  addLog(".")
+			})
+		}
+		function showConfiguratorPage(tabName, productId, productDescription) {
+		  $("#content").append('<h1>configurator of "' + productDescription + '"</h1><div id="steps"></div><div id="page"></div><a href="javascript:showPage(\'catalogtabs\')">Back to product list</a>');
+			addLog("start new product configuration in CPQ...")
+			httpPost("config/start/" + tabName + "/" + productId, {"_externalId": cpq_settings.EXTERNAL_ID}, function(config_result) {
+			  console.log(config_result)
+			  for (var step of config_result.steps) {
+			    if (!step.available) continue
+			    var $step = $('<button id="' + step.name + '">' + step.description + '</button>')
+			    if (step.current) {
+			      $step
+			    }
+			    $("#steps").append($step)
+			  }
+			  
+			  addLog(".")
+			})
+		}
+		function httpGet(path, callback) {
+		  var url = cpq_settings.CPQ_DOMAIN + "/" + cpq_settings.SELFSERVICE_API_PATH + "/" + path
+			addLog("<b>GET</b> " + url, "black")
+		  $.ajax({
+				method: "GET", url: url, success: callback,
+				headers: {"X-KEY": cpq_settings.SELFSERVICE_KEY},
+			}).fail(onHttpRequestFailed);
+		}
+		function httpPost(path, data, callback) {
+		  var url = cpq_settings.CPQ_DOMAIN + "/" + cpq_settings.SELFSERVICE_API_PATH + "/" + path
+			addLog("<b>POST</b> " + url, "black")
+		  $.ajax({
+				method: "POST", url: url, data: data, success: callback,
+				headers: {"X-KEY": cpq_settings.SELFSERVICE_KEY}
+			}).fail(onHttpRequestFailed);
+		}
+		function onHttpRequestFailed(error) {
+		  console.log(error)
+			addLog("[" + error.status + "] HTTP request failed!", "red")
+			if (error.responseJSON) {
+			  addLog("<b>[" + error.responseJSON.status + "] " + error.responseJSON.message + "</b>", "red")
+			}
 		}
 		$(init);
 	</script>
